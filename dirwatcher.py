@@ -18,18 +18,18 @@ last_position = 0
 
 
 def watch_directory(args):
-    # global watch_files
+    """Watches directory for magic text"""
     directory = args.path
-    logger.info('Watch Dir: {}, File Ext: {}, Polling Int: {}, Magic Txt: {}'
-                .format(directory, args.ext, args.interval, args.magic))
+    # logger.info('Watch Dir: {}, File Ext: {}, Polling Int: {}, Magic Txt: {}'
+    #             .format(directory, args.ext, args.interval, args.magic))
 
     file_list = [os.path.join(directory, f)
                  for f in os.listdir(directory)]
     for file in file_list:
-        if file not in watch_files:
+        if file not in watch_files and file.endswith(args.ext):
             watch_files[file] = 0
             logger.info('Watching new file: {}'.format(file))
-    for file in watch_files:
+    for file in list(watch_files):
         if file not in file_list:
             logger.info('Removed deleted file: {}'.format(file))
             del watch_files[file]
@@ -41,20 +41,22 @@ def watch_directory(args):
 
 
 def find_magic(filename, skip_to_line, magic_word):
+    """
+    Read a file and looks for a magic text
+    while logging a message if found.
+    """
     i = 0
-    line = 0
-    if filename.endswith('.txt'):
-        with open(filename) as f:
-            for i, line in enumerate(f.readlines(), line + 1):
-                if i < skip_to_line:
-                    continue
-                if magic_word in line:
-                    logger.info('Found the {} on {} in {}'
-                                .format(magic_word, i, filename))
-            return i
+    with open(filename) as f:
+        for i, line in enumerate(f, start=1):
+            if i < skip_to_line:
+                continue
+            if magic_word in line:
+                logger.info(f'Found the {magic_word} on {i} in {filename}')
+        return i + 1
 
 
 def create_parser():
+    """Creates and returns an argparse cmd line"""
     parser = argparse.ArgumentParser()
     parser.add_argument('-e', '--ext', type=str, default='.txt',
                         help='Text file extension to watch')
@@ -66,9 +68,19 @@ def create_parser():
 
 
 def signal_handler(sig_num, frame):
-    logger.warning('Received ' + signal.Signals(sig_num).name)
+    """
+    This is a handler for SIGTERM and SIGINT.
+    Other signals can be mapped here as well (SIGHUP?)
+    Basically it just sets a global flag,
+    and main() will exit it's loop if the signal is trapped.
+    :param sig_num: The integer signal number that was trapped from the OS.
+    :param frame: Not used
+    :return None
+    """
     global exit_flag
-    exit_flag = True
+    logger.warning('Received ' + signal.Signals(sig_num).name)
+    if sig_num == signal.SIGINT or signal.SIGTERM:
+        exit_flag = True
 
 
 def main():
@@ -93,14 +105,16 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    logger.info('Watch Dir: {}, File Ext: {}, Polling Int: {}, Magic Txt: {}'
+                .format(args.path, args.ext, args.interval, args.magic))
+
     while not exit_flag:
         try:
             watch_directory(args)
-            # time.sleep(5.0)
-        except Exception as e:
-            logger.error('Unhandled exception: {}'.format(e))
         except OSError as e:
             logger.error(e)
+        except Exception as e:
+            logger.exception('Unhandled exception: {}'.format(e))
         time.sleep(args.interval)
 
     logger.info(
